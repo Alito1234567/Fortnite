@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8" />
+  <title>Mini Fortnite</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+    }
+
+    body {
+      background: #111;
+      color: #fff;
+      text-align: center;
+      padding-top: 20px;
+    }
+
+    #game-container {
+      position: relative;
+      margin: 20px auto;
+      width: 800px;
+      height: 400px;
+      background: #222;
+      overflow: hidden;
+      border: 3px solid #555;
+    }
+
+    /* Storm (krymper inn) */
+    #storm {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 800px;
+      height: 400px;
+      border: 5px solid rgba(120, 0, 200, 0.7);
+      box-shadow: 0 0 20px rgba(150, 0, 255, 0.8);
+      pointer-events: none;
+    }
+
+    /* Spiller */
+    #player {
+      position: absolute;
+      width: 30px;
+      height: 50px;
+      background: #4caf50;
+      bottom: 50px;
+      left: 100px;
+    }
+
+    /* Fiende */
+    #enemy {
+      position: absolute;
+      width: 30px;
+      height: 50px;
+      background: #e53935;
+      bottom: 50px;
+      right: 100px;
+    }
+
+    /* Bakke */
+    #ground {
+      position: absolute;
+      left: 0;
+      bottom: 0;
+      width: 100%;
+      height: 50px;
+      background: #444;
+    }
+  </style>
+</head>
+<body>
+  <h1>Mini Fortnite</h1>
+  <p>W/A/D for å bevege deg, Space for å hoppe.</p>
+  <p id="status">Overlev stormen!</p>
+
+  <div id="game-container">
+    <div id="storm"></div>
+    <div id="player"></div>
+    <div id="enemy"></div>
+    <div id="ground"></div>
+  </div>
+
+  <script>
+    const player = document.getElementById("player");
+    const enemy = document.getElementById("enemy");
+    const storm = document.getElementById("storm");
+    const statusText = document.getElementById("status");
+
+    let keys = {};
+    let playerX = 100;
+    let playerY = 50; // høyde over bakken
+    let velY = 0;
+    let onGround = true;
+
+    let enemyX = 650;
+    let enemyDir = -1;
+
+    let stormLeft = 0;
+    let stormTop = 0;
+    let stormRight = 800;
+    let stormBottom = 400;
+
+    let gameOver = false;
+    let startTime = Date.now();
+    const winTime = 30000; // 30 sekunder for å vinne
+
+    document.addEventListener("keydown", (e) => {
+      keys[e.key.toLowerCase()] = true;
+    });
+
+    document.addEventListener("keyup", (e) => {
+      keys[e.key.toLowerCase()] = false;
+    });
+
+    function updatePlayer(dt) {
+      const speed = 200; // px per sekund
+      const gravity = 900;
+      const jumpForce = 450;
+
+      // Horisontal bevegelse (A/D eller venstre/høyre)
+      if (keys["a"] || keys["arrowleft"]) {
+        playerX -= speed * dt;
+      }
+      if (keys["d"] || keys["arrowright"]) {
+        playerX += speed * dt;
+      }
+
+      // Hopp (Space eller W eller pil opp)
+      if ((keys[" "] || keys["w"] || keys["arrowup"]) && onGround) {
+        velY = jumpForce;
+        onGround = false;
+      }
+
+      // Tyngdekraft
+      velY -= gravity * dt;
+      playerY += velY * dt;
+
+      // Kollisjon med bakken
+      if (playerY <= 0) {
+        playerY = 0;
+        velY = 0;
+        onGround = true;
+      }
+
+      // Begrens innenfor game-container
+      if (playerX < 0) playerX = 0;
+      if (playerX > 800 - 30) playerX = 800 - 30;
+
+      // Oppdater DOM
+      player.style.left = playerX + "px";
+      player.style.bottom = (50 + playerY) + "px";
+    }
+
+    function updateEnemy(dt) {
+      const enemySpeed = 120;
+
+      enemyX += enemyDir * enemySpeed * dt;
+
+      // Enkel patrulje
+      if (enemyX < 400) {
+        enemyDir = 1;
+      } else if (enemyX > 750) {
+        enemyDir = -1;
+      }
+
+      enemy.style.left = enemyX + "px";
+    }
+
+    function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
+      return (
+        ax < bx + bw &&
+        ax + aw > bx &&
+        ay < by + bh &&
+        ay + ah > by
+      );
+    }
+
+    function checkCollisions() {
+      // Spiller vs fiende
+      const pRect = {
+        x: playerX,
+        y: 400 - (50 + playerY) - 50,
+        w: 30,
+        h: 50
+      };
+
+      const eRect = {
+        x: enemyX,
+        y: 400 - (50 + 0) - 50,
+        w: 30,
+        h: 50
+      };
+
+      if (rectsOverlap(pRect.x, pRect.y, pRect.w, pRect.h, eRect.x, eRect.y, eRect.w, eRect.h)) {
+        endGame(false, "Fienden tok deg!");
+      }
+
+      // Spiller vs storm (utenfor rammen = tap)
+      if (
+        playerX < stormLeft ||
+        playerX + 30 > stormRight ||
+        400 - (50 + playerY) < stormTop ||
+        400 - (50 + playerY) + 50 > stormBottom
+      ) {
+        endGame(false, "Stormen tok deg!");
+      }
+    }
+
+    function updateStorm(dt) {
+      const shrinkSpeed = 10; // px per sekund per side
+
+      stormLeft += shrinkSpeed * dt;
+      stormTop += shrinkSpeed * dt;
+      stormRight -= shrinkSpeed * dt;
+      stormBottom -= shrinkSpeed * dt;
+
+      if (stormRight - stormLeft < 200) {
+        // Ikke krymp mer enn dette
+        stormLeft -= shrinkSpeed * dt;
+        stormTop -= shrinkSpeed * dt;
+        stormRight += shrinkSpeed * dt;
+        stormBottom += shrinkSpeed * dt;
+      }
+
+      storm.style.left = stormLeft + "px";
+      storm.style.top = stormTop + "px";
+      storm.style.width = (stormRight - stormLeft) + "px";
+      storm.style.height = (stormBottom - stormTop) + "px";
+    }
+
+    function endGame(win, message) {
+      if (gameOver) return;
+      gameOver = true;
+      statusText.textContent = win ? "Du vant! " + message : "Du tapte! " + message;
+    }
+
+    let lastTime = null;
+
+    function gameLoop(timestamp) {
+      if (!lastTime) lastTime = timestamp;
+      const dt = (timestamp - lastTime) / 1000;
+      lastTime = timestamp;
+
+      if (!gameOver) {
+        updatePlayer(dt);
+        updateEnemy(dt);
+        updateStorm(dt);
+        checkCollisions();
+
+        const elapsed = Date.now() - startTime;
+        if (elapsed >= winTime) {
+          endGame(true, "Du overlevde stormen!");
+        }
+      }
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    requestAnimationFrame(gameLoop);
+  </script>
+</body>
+</html>
